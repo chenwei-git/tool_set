@@ -7,6 +7,8 @@ import java.awt.event.KeyEvent;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 
@@ -17,6 +19,7 @@ import java.util.regex.Pattern;
 public class BookReader {
 
   public static void main(String[] args) throws Exception {
+    System.out.println("please wait to notice");
     try (RandomAccessFile book = getBook("D:/all.txt");
         Scanner commander = getCommander();) {
       processBook(book, commander);
@@ -26,40 +29,68 @@ public class BookReader {
   private static void processBook(RandomAccessFile book, Scanner commander)
       throws NumberFormatException, IOException, AWTException {
     String command = null;
-    Robot robot = new Robot();
+    List<Long> linePointerList = getLinePointerList(book);
     System.out.println("please type a num , or q to quit");
-
     for (; !(command = commander.nextLine()).equals("q");) {
       if (isNum(command)) {
-        skipTo(book, Long.valueOf(command));
+        jumpTo(book, linePointerList, Integer.valueOf(command) - 1);
       }
-      clearConsole(robot);
+      clearConsole();
       read(book);
+    }
+    clearConsole();
+  }
+
+  public static List<Long> LinePointerList = null;
+  /**
+   * @param book
+   * @return
+   * @throws IOException
+   */
+  private static List<Long> getLinePointerList(RandomAccessFile book)
+      throws IOException {
+    if (LinePointerList != null) {
+      return LinePointerList;
+    }
+    LinePointerList = new ArrayList<>();
+    LinePointerList.add(0L);
+    for (; book.readLine() != null;) {
+      LinePointerList.add(book.getFilePointer());
+    }
+    return LinePointerList;
+  }
+
+  public static Robot robot = null;
+  static {
+    try {
+      robot = new Robot();
+    } catch (AWTException e) {
     }
   }
 
-  public static void clearConsole(Robot r) throws AWTException {
-    r.mousePress(InputEvent.BUTTON3_MASK); // 按下鼠标右键
-    r.mouseRelease(InputEvent.BUTTON3_MASK); // 释放鼠标右键
-    r.keyPress(KeyEvent.VK_CONTROL); // 按下Ctrl键
-    r.keyPress(KeyEvent.VK_R); // 按下R键
-    r.keyRelease(KeyEvent.VK_R); // 释放R键
-    r.keyRelease(KeyEvent.VK_CONTROL); // 释放Ctrl键
-    r.delay(100);
+  public static void clearConsole() throws AWTException {
+    robot.mousePress(InputEvent.BUTTON3_MASK); // 按下鼠标右键
+    robot.mouseRelease(InputEvent.BUTTON3_MASK); // 释放鼠标右键
+    robot.keyPress(KeyEvent.VK_CONTROL); // 按下Ctrl键
+    robot.keyPress(KeyEvent.VK_R); // 按下R键
+    robot.keyRelease(KeyEvent.VK_R); // 释放R键
+    robot.keyRelease(KeyEvent.VK_CONTROL); // 释放Ctrl键
+    robot.delay(10);
   }
 
   /**
    * @param book
+   * @param lienPointerList
    * @param valueOf
    * @throws IOException
    */
-  private static void skipTo(RandomAccessFile book, Long pos)
-      throws IOException {
-    long maxPos = book.length() - 1;
-    if (pos > maxPos) {
-      pos = maxPos;
+  private static void jumpTo(RandomAccessFile book, List<Long> lienPointerList,
+      int toLineIndex) throws IOException {
+    int lastLineIndex = lienPointerList.size() - 1;
+    if (toLineIndex > lastLineIndex) {
+      toLineIndex = lastLineIndex;
     }
-    book.seek(pos);
+    book.seek(lienPointerList.get(toLineIndex));
   }
 
   /**
