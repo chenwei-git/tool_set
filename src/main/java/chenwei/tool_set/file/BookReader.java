@@ -75,7 +75,7 @@ public class BookReader {
     robot.keyPress(KeyEvent.VK_R); // 按下R键
     robot.keyRelease(KeyEvent.VK_R); // 释放R键
     robot.keyRelease(KeyEvent.VK_CONTROL); // 释放Ctrl键
-    robot.delay(10);
+    robot.delay(100);
   }
 
   /**
