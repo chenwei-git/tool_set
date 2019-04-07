@@ -22,11 +22,8 @@ import java.util.Scanner;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.Future;
-import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.RecursiveTask;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -37,21 +34,30 @@ public class DownloaderManager {
   public static AtomicReference<Downloader> context = new AtomicReference<>();
 
   public static void main(String[] args) throws Exception {
+    System.setProperty("https.protocols", "TLSv1,TLSv1.1,TLSv1.2,SSLv3");
 
     DownloadConfiguer configuer = new DownloadConfiguer();
-    configuer.setThreadNum(6);
+    configuer.setThreadNum(8);
     configuer.setDefaultDir("C:\\mine\\user-data");
 
     Downloader downloader = new Downloader(configuer);
     context.set(downloader);
 
+    List<String> input = helper1();
+    for (String url : input) {
+      DownloadTarget target = new DownloadTarget(url, null, null);
+      context.get().add(target);
+      context.get().start(target);
+    }
+
     Map<String, Boolean> output = new HashMap<>();
-    MyTask task = new MyTask(-1, -1, 2, -1, null, output);
-
-    ForkJoinPool pool = new ForkJoinPool(6);
-    Future<Void> future = pool.submit(task);
-    future.get();
-
+    for (Map.Entry<String, Future<Boolean>> entry : context.get().resultMap.entrySet()) {
+      try {
+        output.put(entry.getKey(), entry.getValue().get());
+      } catch (Exception e) {
+        output.put(entry.getKey(), Boolean.FALSE);
+      }
+    }
     helper2(output);
   }
 
@@ -117,82 +123,30 @@ public class DownloaderManager {
         if (line == null || line.isEmpty() || line.startsWith("#")) {
           continue;
         }
-        fileList.add(line);
+        fileList.add("https://v01.rrmyjj.xyz/file/ts/13000/12596/d/" + line);
       }
     }
     return fileList;
   }
 
-  @SuppressWarnings("serial")
-  public static class MyTask extends RecursiveAction {
-    static final int THRESHOLD = 1;
-    int start = 0;
-    int end = 0;
-    int unit = 0;
-    int amount = 0;
-    List<String> input = null;
-    Map<String, Boolean> output = null;
-
-    public MyTask(int start, int end, int unit, int amount, List<String> input,
-        Map<String, Boolean> output) {
-      this.start = start;
-      this.end = end;
-      this.unit = unit;
-      this.amount = amount;
-      this.input = input;
-      this.output = output;
-    }
-
-    @Override
-    protected void compute() {
-      if (amount == -1) {
-        try {
-          input = helper1();
-        } catch (Exception e) {
-          input = new ArrayList<>();
-        }
-        amount = input.size();
-        start = 0; // 闭区间
-        end = amount % unit == 0 ? amount / unit : amount / unit + 1; // 开区间
-      }
-      if (end - start <= THRESHOLD) {
-        for (int i = start; i < end; i++) {
-          for (int j = i * unit; j < (end * unit) && j < amount; j++) {
-            String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/" + this.input.get(j);
-            DownloadTarget target = new DownloadTarget(url, null, null);
-            if (context.get().add(target) && target.start()) {
-              output.put(url, true);
-            }
-          }
-        }
-        return;
-      }
-      int middle = (start + end) / 2;
-      MyTask left = new MyTask(start, middle, unit, amount, input, output);
-      MyTask right = new MyTask(middle, end, unit, amount, input, output);
-      left.fork();
-      right.fork();
-      left.join();
-      right.join();
-    }
-  }
-
   public static class Downloader {
     ReadWriteLock lock = new ReentrantReadWriteLock();
-    ConcurrentHashMap<String, DownloadTarget> map = null;
-    ForkJoinPool pool = null;
     DownloadConfiguer configuer = null;
+    ConcurrentHashMap<String, DownloadTarget> targetMap = null;
+    ConcurrentHashMap<String, Future<Boolean>> resultMap = null;
+    ForkJoinPool pool = null;
 
     public Downloader(DownloadConfiguer configuer) {
       this.configuer = configuer;
-      this.map = new ConcurrentHashMap<>();
+      this.targetMap = new ConcurrentHashMap<>();
+      this.resultMap = new ConcurrentHashMap<>();
       this.pool = new ForkJoinPool(configuer.getThreadNum());
     }
 
     public boolean add(DownloadTarget target) {
       lock.writeLock().lock();
       try {
-        if (map.containsKey(target.getUrl())) {
+        if (targetMap.containsKey(target.getUrl())) {
           return false;
         }
         if (target.path == null) {
@@ -201,7 +155,7 @@ public class DownloaderManager {
         if (target.pool == null) {
           target.pool = this.pool;
         }
-        map.putIfAbsent(target.getUrl(), target);
+        targetMap.putIfAbsent(target.getUrl(), target);
         return true;
       } finally {
         lock.writeLock().unlock();
@@ -211,13 +165,25 @@ public class DownloaderManager {
     public boolean del(DownloadTarget target) {
       lock.writeLock().lock();
       try {
-        if (!map.containsKey(target.url)) {
+        if (!targetMap.containsKey(target.url)) {
           return false;
         }
-        map.remove(target.url);
+        targetMap.remove(target.url);
         return true;
       } finally {
         lock.writeLock().unlock();
+      }
+    }
+
+    public void start(DownloadTarget target) {
+      lock.readLock().lock();
+      try {
+        if (!targetMap.containsKey(target.url)) {
+          return;
+        }
+        resultMap.put(target.url, target.start());
+      } finally {
+        lock.readLock().unlock();
       }
     }
   }
@@ -255,28 +221,10 @@ public class DownloaderManager {
       this.pool = pool;
     }
 
-    public boolean start() {
-      // 无限重试
-      // ForkJoinTask<Boolean> task =
-      // pool.submit(new DownloadTargetTask(-1, -1, 1000 * 300, -1, url, path));
-      // while (!task.get()) {
-      // task = pool.submit(new DownloadTargetTask(-1, -1, 1000 * 100, -1, url, path));
-      // }
-      Boolean ret = retry(() -> {
-        System.out.println(getFileName(url) + " begin");
-        ForkJoinTask<Boolean> task =
-            pool.submit(new DownloadTargetTask(-1, -1, 1000 * 300, -1, url, path));
-        if (task.get(20, TimeUnit.MINUTES)) {
-          System.out.println(getFileName(url) + " succ");
-          return true;
-        }
-        System.out.println(getFileName(url) + " fail");
-        throw new Exception();
-      }, 1, 1000);
-      if (ret == null) {
-        ret = false;
-      }
-      return ret;
+    public Future<Boolean> start() {
+      Future<Boolean> future =
+          pool.submit(new DownloadTargetTask(-1, -1, 1000 * 300, -1, url, path));
+      return future;
     }
 
     public String getUrl() {
@@ -338,7 +286,7 @@ public class DownloaderManager {
               "init +, to conn = " + count_run.incrementAndGet() + ", file = " + getFileName(url));
           URL $url = new URL(url);
           conn = (HttpURLConnection) $url.openConnection();
-          conn.setConnectTimeout(5000);
+          conn.setConnectTimeout(0);
           conn.setRequestMethod("GET");
           if (conn.getResponseCode() != 200) {
             System.out.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
@@ -398,7 +346,7 @@ public class DownloaderManager {
               + getFileName(url) + "." + _startPos);
           URL $url = new URL(url);
           conn = (HttpURLConnection) $url.openConnection();
-          conn.setConnectTimeout(5000);
+          conn.setConnectTimeout(0);
           conn.setRequestMethod("GET");
           conn.setRequestProperty("Range", "bytes=" + startPos + "-" + endPos);
           System.out.println("process ~, " + "bytes=" + startPos + "-" + endPos + ", file = "
@@ -443,7 +391,7 @@ public class DownloaderManager {
       DownloadTargetTask right = new DownloadTargetTask(middle, end, unit, amount, url, path);
       left.fork();
       right.fork();
-      return left.join() && right.join();
+      return left.join() & right.join();
     }
   }
 
