@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.concurrent.RecursiveTask;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -52,11 +53,15 @@ public class DownloaderManager {
 
     Map<String, Boolean> output = new HashMap<>();
     for (Map.Entry<String, Future<Boolean>> entry : context.get().resultMap.entrySet()) {
-      try {
-        output.put(entry.getKey(), entry.getValue().get());
-      } catch (Exception e) {
-        output.put(entry.getKey(), Boolean.FALSE);
-      }
+      retry(() -> {
+        try {
+          output.put(entry.getKey(), entry.getValue().get(30, TimeUnit.MINUTES));
+        } catch (Exception e) {
+          output.put(entry.getKey(), Boolean.FALSE);
+          throw new Exception(e);
+        }
+        return Void.TYPE;
+      }, 4, 2000);
     }
     helper2(output);
   }
@@ -287,6 +292,7 @@ public class DownloaderManager {
           URL $url = new URL(url);
           conn = (HttpURLConnection) $url.openConnection();
           conn.setConnectTimeout(0);
+          conn.setReadTimeout(0);
           conn.setRequestMethod("GET");
           if (conn.getResponseCode() != 200) {
             System.out.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
@@ -347,6 +353,7 @@ public class DownloaderManager {
           URL $url = new URL(url);
           conn = (HttpURLConnection) $url.openConnection();
           conn.setConnectTimeout(0);
+          conn.setReadTimeout(0);
           conn.setRequestMethod("GET");
           conn.setRequestProperty("Range", "bytes=" + startPos + "-" + endPos);
           System.out.println("process ~, " + "bytes=" + startPos + "-" + endPos + ", file = "
