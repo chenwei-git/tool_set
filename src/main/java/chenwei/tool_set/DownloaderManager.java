@@ -52,33 +52,57 @@ public class DownloaderManager {
     }
 
     Map<String, Boolean> output = new HashMap<>();
-    for (Map.Entry<String, Future<Boolean>> entry : context.get().resultMap.entrySet()) {
-      retry(() -> {
+    for (String url : input) {
+      boolean r = retry(() -> {
+        boolean ret = false;
         try {
-          output.put(entry.getKey(), entry.getValue().get(30, TimeUnit.MINUTES));
+          ret = context.get().resultMap.get(url).get(30, TimeUnit.MINUTES);
         } catch (Exception e) {
-          output.put(entry.getKey(), Boolean.FALSE);
-          throw new Exception(e);
         }
-        return Void.TYPE;
-      }, 4, 2000);
+        if (!ret) {
+          DownloadTarget target = new DownloadTarget(url, null, null);
+          context.get().add(target);
+          context.get().start(target);
+          throw new Exception();
+        }
+        return true;
+      }, 4, 2000, false);
+      if (r) {
+        output.put(url, true);
+      } else {
+        output.put(url, false);
+      }
     }
     helper2(output);
   }
 
   public static void main2(String[] args) throws Exception {
 
+    System.setProperty("https.protocols", "TLSv1,TLSv1.1,TLSv1.2,SSLv3");
+
     DownloadConfiguer configuer = new DownloadConfiguer();
-    configuer.setThreadNum(6);
+    configuer.setThreadNum(8);
     configuer.setDefaultDir("C:\\mine\\user-data");
 
     Downloader downloader = new Downloader(configuer);
+    context.set(downloader);
 
-    String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/index964.ts";
-    DownloadTarget target = new DownloadTarget(url, null, null);
-    if (downloader.add(target)) {
-      target.start();
-    }
+    retry(() -> {
+      boolean ret = false;
+      try {
+        String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/index530.ts";
+        DownloadTarget target = new DownloadTarget(url, null, null);
+        context.get().add(target);
+        context.get().start(target);
+        ret = context.get().resultMap.get(url).get(30, TimeUnit.MINUTES);
+      } catch (Exception e) {
+      }
+      if (!ret) {
+        throw new Exception();
+      } else {
+        return true;
+      }
+    }, 4, 2000, false);
   }
 
   public static void main4(String[] args) {
@@ -108,7 +132,6 @@ public class DownloaderManager {
       }
     }
   }
-
 
 
   private static void helper2(Map<String, Boolean> output) throws Exception {
@@ -180,13 +203,14 @@ public class DownloaderManager {
       }
     }
 
-    public void start(DownloadTarget target) {
+    public boolean start(DownloadTarget target) {
       lock.readLock().lock();
       try {
         if (!targetMap.containsKey(target.url)) {
-          return;
+          return false;
         }
-        resultMap.put(target.url, target.start());
+        resultMap.put(target.url, targetMap.get(target.url).start());
+        return true;
       } finally {
         lock.readLock().unlock();
       }
@@ -284,113 +308,23 @@ public class DownloaderManager {
     protected Boolean compute() {
       // 1 初始化
       if (amount == -1) {
-        HttpURLConnection conn = null;
-        try {
-          // 1.1 获取amount
-          System.out.println(
-              "init +, to conn = " + count_run.incrementAndGet() + ", file = " + getFileName(url));
-          URL $url = new URL(url);
-          conn = (HttpURLConnection) $url.openConnection();
-          conn.setConnectTimeout(0);
-          conn.setReadTimeout(0);
-          conn.setRequestMethod("GET");
-          if (conn.getResponseCode() != 200) {
-            System.out.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
-                + getFileName(url));
-            conn.disconnect();
-            return false;
-          }
-          amount = conn.getContentLength();
-          File file = new File(path);
-          if (!file.exists()) {
-            try (RandomAccessFile raf = new RandomAccessFile(file, "rwd");) {
-              raf.setLength(amount);
-            }
-          }
-          // 1.2 根据unit分割成包
-          start = 0; // 闭区间
-          end = amount % unit == 0 ? amount / unit : amount / unit + 1; // 开区间
-          System.out.println(
-              "init -, to conn = " + count_run.decrementAndGet() + ", file = " + getFileName(url));
-          conn.disconnect();
-        } catch (Exception e) {
-          System.err.println(
-              "init -, to conn = " + count_run.decrementAndGet() + ", file = " + getFileName(url));
-          if (conn != null) {
-            conn.disconnect();
-          }
-          e.printStackTrace();
+        amount = retry(() -> {
+          return init(url, path);
+        }, 50, 2000, -1);
+        if (amount == -1) {
           return false;
         }
+        start = 0; // 闭区间
+        end = amount % unit == 0 ? amount / unit : amount / unit + 1; // 开区间
       }
       if (end - start <= THRESHOLD) {
-        int startPos = start * unit;
-        int _startPos = startPos;
-        int endPos = end * unit - 1;
-        if (endPos >= amount) {
-          endPos = amount - 1; // 容错 -- 有问题
-        }
-        HttpURLConnection conn = null;
-        try {
-          File file = new File(path + "." + startPos);
-          if (file.exists() && file.length() > 0) {
-            try (BufferedReader br =
-                new BufferedReader(new InputStreamReader(new FileInputStream(file)))) {
-              String $startPos = br.readLine();
-              if ($startPos != null && !$startPos.isEmpty()) {
-                startPos = Integer.parseInt($startPos);
-              }
-            }
+        return retry(() -> {
+          boolean ret = process(start, end, unit, amount, url, path);
+          if (!ret) {
+            throw new Exception("process fail");
           }
-          if (startPos >= endPos) {
-            System.out.println("process, success = " + count_ok.incrementAndGet() + ", file = "
-                + getFileName(url) + "." + _startPos);
-            return true;
-          }
-
-          System.out.println("process +, conn = " + count_run.incrementAndGet() + ", file = "
-              + getFileName(url) + "." + _startPos);
-          URL $url = new URL(url);
-          conn = (HttpURLConnection) $url.openConnection();
-          conn.setConnectTimeout(0);
-          conn.setReadTimeout(0);
-          conn.setRequestMethod("GET");
-          conn.setRequestProperty("Range", "bytes=" + startPos + "-" + endPos);
-          System.out.println("process ~, " + "bytes=" + startPos + "-" + endPos + ", file = "
-              + getFileName(url) + "." + _startPos);
-          if (conn.getResponseCode() != 206) {
-            System.err.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
-                + getFileName(url) + "." + _startPos);
-            conn.disconnect();
-            return false;
-          }
-
-          try (InputStream is = conn.getInputStream();
-              RandomAccessFile contRaf = new RandomAccessFile(new File(path), "rwd");
-              RandomAccessFile posRaf = new RandomAccessFile(file, "rwd");) {
-            byte[] bytes = new byte[1024];
-            int size = 0;
-            while ((size = is.read(bytes)) > 0) {
-              contRaf.seek(startPos);
-              contRaf.write(bytes, 0, size);
-              startPos += size;
-              posRaf.setLength(0);
-              posRaf.write((startPos + "").getBytes());
-            }
-          }
-          System.out.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
-              + getFileName(url) + "." + _startPos);
-          conn.disconnect();
           return true;
-        } catch (Exception e) {
-          e.printStackTrace();
-          System.err.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
-              + getFileName(url) + "." + _startPos);
-          if (conn != null) {
-            conn.disconnect();
-          }
-          return false;
-        }
+        }, 50, 2000, false);
       }
       // 2 分
       int middle = (start + end) / 2;
@@ -402,25 +336,130 @@ public class DownloaderManager {
     }
   }
 
+  public static int init(String url, String path) throws Exception {
+    HttpURLConnection conn = null;
+    int amount = -1;
+    try {
+      // 1.1 获取amount
+      System.out.println(
+          "init +, to conn = " + count_run.incrementAndGet() + ", file = " + getFileName(url));
+      URL $url = new URL(url);
+      conn = (HttpURLConnection) $url.openConnection();
+      conn.setConnectTimeout(1000 * 60 * 1);
+      conn.setReadTimeout(1000 * 60 * 1);
+      conn.setRequestMethod("GET");
+      if (conn.getResponseCode() != 200) {
+        throw new Exception("respcode != 200");
+      }
+      amount = conn.getContentLength();
+      File file = new File(path);
+      if (!file.exists()) {
+        try (RandomAccessFile raf = new RandomAccessFile(file, "rwd");) {
+          raf.setLength(amount);
+        }
+      }
+      System.out.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
+          + getFileName(url) + ", amount = " + amount);
+      return amount;
+    } catch (Exception e) {
+      System.err.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
+          + getFileName(url) + ", amount = " + amount);
+      e.printStackTrace();
+      throw e;
+    } finally {
+      if (conn != null) {
+        conn.disconnect();
+      }
+    }
+  }
+
+  public static boolean process(int start, int end, int unit, int amount, String url, String path) {
+    int startPos = start * unit;
+    int _startPos = startPos;
+    int endPos = end * unit - 1;
+    if (endPos >= amount) {
+      endPos = amount - 1; // 容错 -- 有问题
+    }
+    HttpURLConnection conn = null;
+    try {
+      File file = new File(path + "." + startPos);
+      if (file.exists() && file.length() > 0) {
+        try (BufferedReader br =
+            new BufferedReader(new InputStreamReader(new FileInputStream(file)))) {
+          String $startPos = br.readLine();
+          if ($startPos != null && !$startPos.isEmpty()) {
+            startPos = Integer.parseInt($startPos);
+          }
+        }
+      }
+      if (startPos >= endPos) {
+        System.out.println("process, success = " + count_ok.incrementAndGet() + ", file = "
+            + getFileName(url) + "." + _startPos);
+        return true;
+      }
+
+      System.out.println("process +, conn = " + count_run.incrementAndGet() + ", file = "
+          + getFileName(url) + "." + _startPos);
+      URL $url = new URL(url);
+      conn = (HttpURLConnection) $url.openConnection();
+      conn.setConnectTimeout(1000 * 60 * 1);
+      conn.setReadTimeout(1000 * 60 * 1);
+      conn.setRequestMethod("GET");
+      conn.setRequestProperty("Range", "bytes=" + startPos + "-" + endPos);
+      System.out.println("process ~, " + "bytes=" + startPos + "-" + endPos + ", file = "
+          + getFileName(url) + "." + _startPos);
+      if (conn.getResponseCode() != 206) {
+        System.err.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
+            + getFileName(url) + "." + _startPos);
+        conn.disconnect();
+        return false;
+      }
+
+      try (InputStream is = conn.getInputStream();
+          RandomAccessFile contRaf = new RandomAccessFile(new File(path), "rwd");
+          RandomAccessFile posRaf = new RandomAccessFile(file, "rwd");) {
+        byte[] bytes = new byte[1024];
+        int size = 0;
+        while ((size = is.read(bytes)) > 0) {
+          contRaf.seek(startPos);
+          contRaf.write(bytes, 0, size);
+          startPos += size;
+          posRaf.setLength(0);
+          posRaf.write((startPos + "").getBytes());
+        }
+      }
+      System.out.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
+          + getFileName(url) + "." + _startPos);
+      conn.disconnect();
+      return true;
+    } catch (Exception e) {
+      e.printStackTrace();
+      System.err.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
+          + getFileName(url) + "." + _startPos);
+      if (conn != null) {
+        conn.disconnect();
+      }
+      return false;
+    }
+  }
+
   public static String getFileName(String url) {
     return url.substring(url.lastIndexOf("/") + 1);
   }
 
-  public static <T> T retry(Callable<T> caller, int maxAttempts, long interval) {
+  public static <T> T retry(Callable<T> caller, int maxAttempts, long interval, T deafult) {
     int _maxAttempts = maxAttempts;
     while (_maxAttempts-- > 0) {
       try {
         T t = caller.call();
         return t;
       } catch (Exception e) {
-        System.err.println("retry time=" + (_maxAttempts + 1));
-        e.printStackTrace();
       }
       try {
         Thread.sleep(interval);
       } catch (InterruptedException e) {
       }
     }
-    return null;
+    return deafult;
   }
 }
