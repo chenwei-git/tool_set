@@ -90,7 +90,7 @@ public class DownloaderManager {
     retry(() -> {
       boolean ret = false;
       try {
-        String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/index1001.ts";
+        String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/index1004.ts";
         DownloadTarget target = new DownloadTarget(url, null, null);
         context.get().add(target);
         context.get().start(target);
@@ -341,8 +341,8 @@ public class DownloaderManager {
           "init +, to conn = " + count_run.incrementAndGet() + ", file = " + getFileName(url));
       URL $url = new URL(url);
       conn = (HttpURLConnection) $url.openConnection();
-      conn.setConnectTimeout(1000 * 60 * 1);
-      conn.setReadTimeout(1000 * 60 * 1);
+      conn.setConnectTimeout(1000 * 10);
+      conn.setReadTimeout(1000 * 20);
       conn.setRequestMethod("GET");
       if (conn.getResponseCode() != 200) {
         throw new Exception("respcode != 200");
@@ -398,8 +398,8 @@ public class DownloaderManager {
           + getFileName(url) + "." + _startPos);
       URL $url = new URL(url);
       conn = (HttpURLConnection) $url.openConnection();
-      conn.setConnectTimeout(1000 * 60 * 1);
-      conn.setReadTimeout(1000 * 60 * 1);
+      conn.setConnectTimeout(1000 * 10); // 与请求网址的服务器建立连接的超时时间
+      conn.setReadTimeout(1000 * 20); // 建立连接后如果指定时间内服务器没有返回数据则超时
       conn.setRequestMethod("GET");
       if (endPos == amount - 1) {
         conn.setRequestProperty("Range", "bytes=" + startPos + "-");
