@@ -34,7 +34,7 @@ public class DownloaderManager {
 
   public static AtomicReference<Downloader> context = new AtomicReference<>();
 
-  public static void main(String[] args) throws Exception {
+  public static void main1(String[] args) throws Exception {
     System.setProperty("https.protocols", "TLSv1,TLSv1.1,TLSv1.2,SSLv3");
 
     DownloadConfiguer configuer = new DownloadConfiguer();
@@ -76,7 +76,7 @@ public class DownloaderManager {
     helper2(output);
   }
 
-  public static void main2(String[] args) throws Exception {
+  public static void main(String[] args) throws Exception {
 
     System.setProperty("https.protocols", "TLSv1,TLSv1.1,TLSv1.2,SSLv3");
 
@@ -90,7 +90,7 @@ public class DownloaderManager {
     retry(() -> {
       boolean ret = false;
       try {
-        String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/index530.ts";
+        String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/index1001.ts";
         DownloadTarget target = new DownloadTarget(url, null, null);
         context.get().add(target);
         context.get().start(target);
@@ -99,9 +99,8 @@ public class DownloaderManager {
       }
       if (!ret) {
         throw new Exception();
-      } else {
-        return true;
       }
+      return true;
     }, 4, 2000, false);
   }
 
@@ -319,10 +318,7 @@ public class DownloaderManager {
       }
       if (end - start <= THRESHOLD) {
         return retry(() -> {
-          boolean ret = process(start, end, unit, amount, url, path);
-          if (!ret) {
-            throw new Exception("process fail");
-          }
+          process(start, end, unit, amount, url, path);
           return true;
         }, 50, 2000, false);
       }
@@ -362,9 +358,9 @@ public class DownloaderManager {
           + getFileName(url) + ", amount = " + amount);
       return amount;
     } catch (Exception e) {
+      e.printStackTrace();
       System.err.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
           + getFileName(url) + ", amount = " + amount);
-      e.printStackTrace();
       throw e;
     } finally {
       if (conn != null) {
@@ -373,12 +369,13 @@ public class DownloaderManager {
     }
   }
 
-  public static boolean process(int start, int end, int unit, int amount, String url, String path) {
+  public static void process(int start, int end, int unit, int amount, String url, String path)
+      throws Exception {
     int startPos = start * unit;
     int _startPos = startPos;
     int endPos = end * unit - 1;
     if (endPos >= amount) {
-      endPos = amount - 1; // 容错 -- 有问题
+      endPos = amount - 1;
     }
     HttpURLConnection conn = null;
     try {
@@ -395,9 +392,8 @@ public class DownloaderManager {
       if (startPos >= endPos) {
         System.out.println("process, success = " + count_ok.incrementAndGet() + ", file = "
             + getFileName(url) + "." + _startPos);
-        return true;
+        return;
       }
-
       System.out.println("process +, conn = " + count_run.incrementAndGet() + ", file = "
           + getFileName(url) + "." + _startPos);
       URL $url = new URL(url);
@@ -405,16 +401,16 @@ public class DownloaderManager {
       conn.setConnectTimeout(1000 * 60 * 1);
       conn.setReadTimeout(1000 * 60 * 1);
       conn.setRequestMethod("GET");
-      conn.setRequestProperty("Range", "bytes=" + startPos + "-" + endPos);
+      if (endPos == amount - 1) {
+        conn.setRequestProperty("Range", "bytes=" + startPos + "-");
+      } else {
+        conn.setRequestProperty("Range", "bytes=" + startPos + "-" + endPos);
+      }
       System.out.println("process ~, " + "bytes=" + startPos + "-" + endPos + ", file = "
           + getFileName(url) + "." + _startPos);
       if (conn.getResponseCode() != 206) {
-        System.err.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
-            + getFileName(url) + "." + _startPos);
-        conn.disconnect();
-        return false;
+        throw new Exception("respcode != 206");
       }
-
       try (InputStream is = conn.getInputStream();
           RandomAccessFile contRaf = new RandomAccessFile(new File(path), "rwd");
           RandomAccessFile posRaf = new RandomAccessFile(file, "rwd");) {
@@ -430,16 +426,15 @@ public class DownloaderManager {
       }
       System.out.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
           + getFileName(url) + "." + _startPos);
-      conn.disconnect();
-      return true;
     } catch (Exception e) {
       e.printStackTrace();
       System.err.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
           + getFileName(url) + "." + _startPos);
+      throw e;
+    } finally {
       if (conn != null) {
         conn.disconnect();
       }
-      return false;
     }
   }
 
