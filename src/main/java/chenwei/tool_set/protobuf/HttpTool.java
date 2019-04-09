@@ -1,10 +1,10 @@
-package chenwei.tool_set;
+package chenwei.tool_set.protobuf;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import chenwei.tool_set.protobuf.MailSendTriggerProto.MailSendTriggerReq;
-import chenwei.tool_set.protobuf.SequenceUtil;
+import chenwei.tool_set.unit.SequenceUtil;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
