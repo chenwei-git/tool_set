@@ -3,6 +3,7 @@ package chenwei.tool_set.download;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -77,8 +78,8 @@ public class DownloaderManager {
     RetryUtil.invokeOfSimple(() -> {
       boolean ret = false;
       try {
-        String url = "https://v01.rrmyjj.xyz/file/ts/13000/12596/d/index1005.ts";
-        DownloadTarget target = new DownloadTarget(url, null, 1000 * 300, null);
+        String url = "http://etorrent.click/torrents/a1a5-2515587.torrent";
+        DownloadTarget target = new DownloadTarget(url, null, 1000 * 500, null);
         context.get().add(target);
         context.get().start(target);
         ret = context.get().resultMap.get(url).get(30, TimeUnit.MINUTES);
@@ -91,17 +92,17 @@ public class DownloaderManager {
     }, 4, 2000, false);
   }
 
-  public static void main4(String[] args) {
+  public static void main3(String[] args) {
     String dir = "C:\\mine\\user-data\\index";
     String suffix = ".ts";
-    for (int i = 0; i <= 1485; i++) {
+    for (int i = 0; i <= 862; i++) {
       if (!new File(dir + i + suffix).exists()) {
         System.out.println(dir + i + suffix);
       }
     }
   }
 
-  public static void main5(String[] args) throws Exception {
+  public static void main4(String[] args) throws Exception {
     File of = new File("C:\\mine\\user-data\\new.ts");
     if (of.exists()) {
       of.delete();
@@ -110,7 +111,7 @@ public class DownloaderManager {
     String suffix = ".ts";
     try (FileOutputStream os = new FileOutputStream("C:\\mine\\user-data\\new.ts", true);
         FileChannel oc = os.getChannel();) {
-      for (int i = 0; i <= 1485; i++) {
+      for (int i = 0; i <= 862; i++) {
         try (FileInputStream is = new FileInputStream(dir + i + suffix);
             FileChannel ic = is.getChannel();) {
           oc.transferFrom(ic, oc.size(), ic.size());
@@ -119,6 +120,49 @@ public class DownloaderManager {
     }
   }
 
+  public static void main5(String[] args) throws Exception {
+    System.setProperty("https.protocols", "TLSv1,TLSv1.1,TLSv1.2,SSLv3");
+
+    DownloadConfiguer configuer = new DownloadConfiguer();
+    configuer.setThreadNum(8);
+    configuer.setDefaultDir("C:/mine/user-data");
+
+    Downloader downloader = new Downloader(configuer);
+    context.set(downloader);
+
+    Map<String, String> input = helper3();
+    for (Map.Entry<String, String> entry : input.entrySet()) {
+      DownloadTarget target = new DownloadTarget(entry.getKey(),
+          configuer.getDefaultDir() + "/" + entry.getValue(), 1000 * 5000, null);
+      context.get().add(target);
+      context.get().start(target);
+    }
+
+    Map<String, Boolean> output = new HashMap<>();
+    for (Map.Entry<String, String> entry : input.entrySet()) {
+      boolean r = RetryUtil.invokeOfSimple(() -> {
+        boolean ret = false;
+        try {
+          ret = context.get().resultMap.get(entry.getKey()).get(30, TimeUnit.MINUTES);
+        } catch (Exception e) {
+        }
+        if (!ret) {
+          DownloadTarget target = new DownloadTarget(entry.getKey(),
+              configuer.getDefaultDir() + "/" + entry.getValue(), 1000 * 5000, null);
+          context.get().add(target);
+          context.get().start(target);
+          throw new Exception();
+        }
+        return true;
+      }, 4, 2000, false);
+      if (r) {
+        output.put(entry.getValue() + "::" + entry.getKey(), true);
+      } else {
+        output.put(entry.getValue() + "::" + entry.getKey(), false);
+      }
+    }
+    helper2(output);
+  }
 
   private static void helper2(Map<String, Boolean> output) throws Exception {
     Path path = Paths.get("C:\\mine\\user-data\\output.txt");
@@ -137,9 +181,24 @@ public class DownloaderManager {
         if (line == null || line.isEmpty() || line.startsWith("#")) {
           continue;
         }
-        fileList.add("https://v01.rrmyjj.xyz/file/ts/13000/12596/d/" + line);
+        fileList.add("https://v01.rrmyjj.xyz/file/ts/11000/10518/d/" + line);
       }
     }
     return fileList;
+  }
+
+  public static Map<String, String> helper3() throws FileNotFoundException {
+    Map<String, String> result = new HashMap<String, String>();
+    try (Scanner sc = new Scanner(new File("C:\\mine\\user-data\\a.txt"))) {
+      while (sc.hasNextLine()) {
+        String line = sc.nextLine();
+        if (line == null || line.isEmpty()) {
+          continue;
+        }
+        String[] arry = line.split("\\:\\:");
+        result.put(arry[1], arry[0]);
+      }
+    }
+    return result;
   }
 }

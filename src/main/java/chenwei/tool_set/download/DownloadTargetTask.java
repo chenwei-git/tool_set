@@ -70,7 +70,7 @@ public class DownloadTargetTask extends RecursiveTask<Boolean> {
     try {
       // 1.1 获取amount
       System.out.println("init +, to conn = " + count_run.incrementAndGet() + ", file = "
-          + FileUtil.getFileNameFromUrl(url));
+          + FileUtil.getFileNameFromPath(path));
       URL $url = new URL(url);
       conn = (HttpURLConnection) $url.openConnection();
       conn.setConnectTimeout(1000 * 10);
@@ -87,12 +87,12 @@ public class DownloadTargetTask extends RecursiveTask<Boolean> {
         }
       }
       System.out.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
-          + FileUtil.getFileNameFromUrl(url) + ", amount = " + amount);
+          + FileUtil.getFileNameFromPath(path) + ", amount = " + amount);
       return amount;
     } catch (Exception e) {
       e.printStackTrace();
       System.err.println("init -, to conn = " + count_run.decrementAndGet() + ", file = "
-          + FileUtil.getFileNameFromUrl(url) + ", amount = " + amount);
+          + FileUtil.getFileNameFromPath(path) + ", amount = " + amount);
       throw e;
     } finally {
       if (conn != null) {
@@ -123,11 +123,11 @@ public class DownloadTargetTask extends RecursiveTask<Boolean> {
       }
       if (startPos >= endPos) {
         System.out.println("process, success = " + count_ok.incrementAndGet() + ", file = "
-            + FileUtil.getFileNameFromUrl(url) + "." + _startPos);
+            + FileUtil.getFileNameFromPath(path) + "." + _startPos);
         return;
       }
       System.out.println("process +, conn = " + count_run.incrementAndGet() + ", file = "
-          + FileUtil.getFileNameFromUrl(url) + "." + _startPos);
+          + FileUtil.getFileNameFromPath(path) + "." + _startPos);
       URL $url = new URL(url);
       conn = (HttpURLConnection) $url.openConnection();
       conn.setConnectTimeout(1000 * 10); // 与请求网址的服务器建立连接的超时时间
@@ -139,7 +139,7 @@ public class DownloadTargetTask extends RecursiveTask<Boolean> {
         conn.setRequestProperty("Range", "bytes=" + startPos + "-" + endPos);
       }
       System.out.println("process ~, " + "bytes=" + startPos + "-" + endPos + ", file = "
-          + FileUtil.getFileNameFromUrl(url) + "." + _startPos);
+          + FileUtil.getFileNameFromPath(path) + "." + _startPos);
       if (conn.getResponseCode() != 206) {
         throw new Exception("respcode != 206");
       }
@@ -157,11 +157,11 @@ public class DownloadTargetTask extends RecursiveTask<Boolean> {
         }
       }
       System.out.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
-          + FileUtil.getFileNameFromUrl(url) + "." + _startPos);
+          + FileUtil.getFileNameFromPath(path) + "." + _startPos);
     } catch (Exception e) {
       e.printStackTrace();
       System.err.println("process -, conn = " + count_run.decrementAndGet() + ", file = "
-          + FileUtil.getFileNameFromUrl(url) + "." + _startPos);
+          + FileUtil.getFileNameFromPath(path) + "." + _startPos);
       throw e;
     } finally {
       if (conn != null) {

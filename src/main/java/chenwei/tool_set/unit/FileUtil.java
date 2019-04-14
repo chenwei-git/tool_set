@@ -37,6 +37,10 @@ public class FileUtil {
     return url.substring(url.lastIndexOf("/") + 1);
   }
 
+  public static String getFileNameFromPath(String path) {
+    return path.substring(path.lastIndexOf("/") + 1);
+  }
+
   public static void main(String[] args) throws Exception {
     try (Scanner sc = new Scanner(System.in);
         RandomAccessFile accessFile = new RandomAccessFile(new File("D:/a.txt"), "r");) {
