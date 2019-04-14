@@ -9,10 +9,11 @@ public class DownloadConfiguer {
     super();
   }
 
-  public DownloadConfiguer(int threadNum, String defaultDir) {
+  public DownloadConfiguer(int threadNum, String defaultDir, int blockSize) {
     super();
     this.threadNum = threadNum;
     this.defaultDir = defaultDir;
+    this.blockSize = blockSize;
   }
 
   public int getThreadNum() {

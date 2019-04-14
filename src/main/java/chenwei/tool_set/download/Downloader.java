@@ -32,7 +32,7 @@ public class Downloader {
         target.path =
             this.configuer.getDefaultDir() + "\\" + FileUtil.getFileNameFromUrl(target.getUrl());
       }
-      if (target.unit == 0) {
+      if (target.unit <= 0) {
         target.unit = this.configuer.getBlockSize();
       }
       if (target.pool == null) {
